@@ -1,0 +1,67 @@
+# HTTP availability SLO: 99.9% of requests over 30d are non-5xx (error budget = 0.1%).
+# Multi-window, multi-burn-rate alerting per the Google SRE Workbook, ch. 5:
+#   page   : 2% of budget in 1h  (14.4x) or 5% in 6h (6x)     -> critical
+#   ticket : 10% of budget in 1d (3x)    or 10% in 3d (1x)    -> warning
+# The short window in each pair makes the alert reset quickly once the burn stops.
+# For many services / objectives, generate these with Sloth or Pyrra rather than hand-editing.
+groups:
+  - name: slo-http.recording
+    rules:
+      - record: job:slo_http_errors_per_request:ratio_rate5m
+        expr: sum by (job) (rate(http_requests_total{code=~"5.."}[5m])) / sum by (job) (rate(http_requests_total[5m]))
+      - record: job:slo_http_errors_per_request:ratio_rate30m
+        expr: sum by (job) (rate(http_requests_total{code=~"5.."}[30m])) / sum by (job) (rate(http_requests_total[30m]))
+      - record: job:slo_http_errors_per_request:ratio_rate1h
+        expr: sum by (job) (rate(http_requests_total{code=~"5.."}[1h])) / sum by (job) (rate(http_requests_total[1h]))
+      - record: job:slo_http_errors_per_request:ratio_rate2h
+        expr: sum by (job) (rate(http_requests_total{code=~"5.."}[2h])) / sum by (job) (rate(http_requests_total[2h]))
+      - record: job:slo_http_errors_per_request:ratio_rate6h
+        expr: sum by (job) (rate(http_requests_total{code=~"5.."}[6h])) / sum by (job) (rate(http_requests_total[6h]))
+      - record: job:slo_http_errors_per_request:ratio_rate1d
+        expr: sum by (job) (rate(http_requests_total{code=~"5.."}[1d])) / sum by (job) (rate(http_requests_total[1d]))
+      - record: job:slo_http_errors_per_request:ratio_rate3d
+        expr: sum by (job) (rate(http_requests_total{code=~"5.."}[3d])) / sum by (job) (rate(http_requests_total[3d]))
+
+  - name: slo-http.alerts
+    rules:
+      - alert: SLOErrorBudgetBurnFast
+        expr: |
+          (
+            job:slo_http_errors_per_request:ratio_rate1h > (14.4 * 0.001)
+          and
+            job:slo_http_errors_per_request:ratio_rate5m > (14.4 * 0.001)
+          )
+          or
+          (
+            job:slo_http_errors_per_request:ratio_rate6h > (6 * 0.001)
+          and
+            job:slo_http_errors_per_request:ratio_rate30m > (6 * 0.001)
+          )
+        for: 2m
+        labels:
+          severity: critical
+          slo: http-availability-99.9
+        annotations:
+          summary: "{{ $labels.job }} is burning its 30d error budget fast"
+          runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#sloerrorbudgetburn"
+
+      - alert: SLOErrorBudgetBurnSlow
+        expr: |
+          (
+            job:slo_http_errors_per_request:ratio_rate1d > (3 * 0.001)
+          and
+            job:slo_http_errors_per_request:ratio_rate2h > (3 * 0.001)
+          )
+          or
+          (
+            job:slo_http_errors_per_request:ratio_rate3d > 0.001
+          and
+            job:slo_http_errors_per_request:ratio_rate6h > 0.001
+          )
+        for: 15m
+        labels:
+          severity: warning
+          slo: http-availability-99.9
+        annotations:
+          summary: "{{ $labels.job }} is steadily consuming its 30d error budget"
+          runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#sloerrorbudgetburn"

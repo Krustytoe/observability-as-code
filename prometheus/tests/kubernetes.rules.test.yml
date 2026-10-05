@@ -1,0 +1,88 @@
+rule_files:
+  - ../rules/kubernetes.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: crashlooping pod
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{namespace="payments", pod="ledger-7d9f-abc12", container="ledger", reason="CrashLoopBackOff"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KubePodCrashLooping
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: payments
+              pod: ledger-7d9f-abc12
+              container: ledger
+              reason: CrashLoopBackOff
+            exp_annotations:
+              summary: "payments/ledger-7d9f-abc12 (ledger) is in CrashLoopBackOff"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#kubepodcrashlooping"
+
+  - name: degraded vs fully unavailable deployment
+    interval: 1m
+    input_series:
+      - series: 'kube_deployment_spec_replicas{namespace="payments", deployment="ledger"}'
+        values: '3x30'
+      - series: 'kube_deployment_status_replicas_available{namespace="payments", deployment="ledger"}'
+        values: '2x30'
+      - series: 'kube_deployment_spec_replicas{namespace="payments", deployment="gateway"}'
+        values: '2x30'
+      - series: 'kube_deployment_status_replicas_available{namespace="payments", deployment="gateway"}'
+        values: '0x30'
+      # scaled to zero on purpose: must not alert
+      - series: 'kube_deployment_spec_replicas{namespace="batch", deployment="nightly"}'
+        values: '0x30'
+      - series: 'kube_deployment_status_replicas_available{namespace="batch", deployment="nightly"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: KubeDeploymentUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: payments
+              deployment: gateway
+            exp_annotations:
+              summary: "payments/gateway has zero available replicas"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#kubedeploymentreplicasmismatch"
+      - eval_time: 20m
+        alertname: KubeDeploymentReplicasMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: payments
+              deployment: ledger
+            exp_annotations:
+              summary: "payments/ledger is running below desired replicas"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#kubedeploymentreplicasmismatch"
+          - exp_labels:
+              severity: warning
+              namespace: payments
+              deployment: gateway
+            exp_annotations:
+              summary: "payments/gateway is running below desired replicas"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#kubedeploymentreplicasmismatch"
+
+  - name: pvc almost full
+    interval: 1m
+    input_series:
+      - series: 'kubelet_volume_stats_available_bytes{namespace="data", persistentvolumeclaim="postgres-0"}'
+        values: '3x15'
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="data", persistentvolumeclaim="postgres-0"}'
+        values: '100x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: KubePersistentVolumeAlmostFull
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: data
+              persistentvolumeclaim: postgres-0
+            exp_annotations:
+              summary: "PVC data/postgres-0 has under 5% free"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#kubepersistentvolumealmostfull"

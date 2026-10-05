@@ -1,0 +1,136 @@
+rule_files:
+  - ../rules/node.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: exporter down pages after 5m
+    interval: 1m
+    input_series:
+      - series: 'up{job="node", instance="host1:9100"}'
+        values: '1 1 0x15'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: NodeExporterDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: NodeExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: host1:9100
+            exp_annotations:
+              summary: "node_exporter on host1:9100 is unreachable"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodeexporterdown"
+
+  - name: sustained high CPU
+    interval: 1m
+    input_series:
+      # idle grows 3s per 60s => 5% idle => 95% utilised
+      - series: 'node_cpu_seconds_total{job="node", instance="host1:9100", cpu="0", mode="idle"}'
+        values: '0+3x40'
+    promql_expr_test:
+      - expr: instance:node_cpu_utilisation:rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'instance:node_cpu_utilisation:rate5m{job="node", instance="host1:9100"}'
+            value: 0.95
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: NodeHighCPU
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: host1:9100
+            exp_annotations:
+              summary: "CPU on host1:9100 above 90% for 15m"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodehighcpu"
+
+  - name: memory pressure warns but does not page at 95%
+    interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="host1:9100"}'
+        values: '5x30'
+      - series: 'node_memory_MemTotal_bytes{job="node", instance="host1:9100"}'
+        values: '100x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NodeMemoryPressure
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: host1:9100
+            exp_annotations:
+              summary: "Memory on host1:9100 above 90% for 15m"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodememorypressure"
+      - eval_time: 20m
+        alertname: NodeMemoryExhausted
+        exp_alerts: []
+
+  - name: filesystem trending to full
+    interval: 1m
+    input_series:
+      # 20% free, losing 0.05 units/min (72/day) => predicted full well within 24h
+      - series: 'node_filesystem_avail_bytes{job="node", instance="host1:9100", device="/dev/nvme0n1p1", fstype="xfs", mountpoint="/"}'
+        values: '20-0.05x180'
+      - series: 'node_filesystem_size_bytes{job="node", instance="host1:9100", device="/dev/nvme0n1p1", fstype="xfs", mountpoint="/"}'
+        values: '100x180'
+      - series: 'node_filesystem_readonly{job="node", instance="host1:9100", device="/dev/nvme0n1p1", fstype="xfs", mountpoint="/"}'
+        values: '0x180'
+      # tmpfs is excluded even though it is "full"
+      - series: 'node_filesystem_avail_bytes{job="node", instance="host1:9100", device="tmpfs", fstype="tmpfs", mountpoint="/run"}'
+        values: '1x180'
+      - series: 'node_filesystem_size_bytes{job="node", instance="host1:9100", device="tmpfs", fstype="tmpfs", mountpoint="/run"}'
+        values: '100x180'
+      - series: 'node_filesystem_readonly{job="node", instance="host1:9100", device="tmpfs", fstype="tmpfs", mountpoint="/run"}'
+        values: '0x180'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: NodeFilesystemFillingUp
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: host1:9100
+              device: /dev/nvme0n1p1
+              fstype: xfs
+              mountpoint: /
+            exp_annotations:
+              summary: "/ on host1:9100 predicted to fill within 24h"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodefilesystemfillingup"
+      - eval_time: 2h
+        alertname: NodeFilesystemAlmostFull
+        exp_alerts: []
+
+  - name: filesystem almost full, read-only mounts ignored
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node", instance="host1:9100", device="/dev/sdb", fstype="ext4", mountpoint="/data"}'
+        values: '4x60'
+      - series: 'node_filesystem_size_bytes{job="node", instance="host1:9100", device="/dev/sdb", fstype="ext4", mountpoint="/data"}'
+        values: '100x60'
+      - series: 'node_filesystem_readonly{job="node", instance="host1:9100", device="/dev/sdb", fstype="ext4", mountpoint="/data"}'
+        values: '0x60'
+      - series: 'node_filesystem_avail_bytes{job="node", instance="host1:9100", device="/dev/sr0", fstype="iso9660", mountpoint="/media/cdrom"}'
+        values: '0x60'
+      - series: 'node_filesystem_size_bytes{job="node", instance="host1:9100", device="/dev/sr0", fstype="iso9660", mountpoint="/media/cdrom"}'
+        values: '100x60'
+      - series: 'node_filesystem_readonly{job="node", instance="host1:9100", device="/dev/sr0", fstype="iso9660", mountpoint="/media/cdrom"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: NodeFilesystemAlmostFull
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node
+              instance: host1:9100
+              device: /dev/sdb
+              fstype: ext4
+              mountpoint: /data
+            exp_annotations:
+              summary: "/data on host1:9100 has under 5% free"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodefilesystemfillingup"

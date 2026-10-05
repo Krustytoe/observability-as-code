@@ -1,0 +1,61 @@
+rule_files:
+  - ../rules/slo-http.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: 9% errors burns budget fast and slow
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="checkout-api", code="200"}'
+        values: '0+100x120'
+      - series: 'http_requests_total{job="checkout-api", code="500"}'
+        values: '0+10x120'
+      # healthy neighbour: 0.05% errors, under budget
+      - series: 'http_requests_total{job="catalog-api", code="200"}'
+        values: '0+2000x120'
+      - series: 'http_requests_total{job="catalog-api", code="503"}'
+        values: '0+1x120'
+    promql_expr_test:
+      # 10 errors / 110 requests per minute; rounded to dodge float noise in the division
+      - expr: round(job:slo_http_errors_per_request:ratio_rate5m, 0.0001)
+        eval_time: 30m
+        exp_samples:
+          - labels: '{job="checkout-api"}'
+            value: 0.0909
+          - labels: '{job="catalog-api"}'
+            value: 0.0005
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SLOErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              slo: http-availability-99.9
+              job: checkout-api
+            exp_annotations:
+              summary: "checkout-api is burning its 30d error budget fast"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#sloerrorbudgetburn"
+      - eval_time: 70m
+        alertname: SLOErrorBudgetBurnSlow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: http-availability-99.9
+              job: checkout-api
+            exp_annotations:
+              summary: "checkout-api is steadily consuming its 30d error budget"
+              runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#sloerrorbudgetburn"
+
+  - name: short spike that has stopped does not page
+    interval: 1m
+    input_series:
+      # 10 minutes of 50% errors, then fully healthy. The 5m window clears, so the fast burn resets.
+      - series: 'http_requests_total{job="checkout-api", code="200"}'
+        values: '0+100x10 1000+200x60'
+      - series: 'http_requests_total{job="checkout-api", code="500"}'
+        values: '0+100x10 1000+0x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: SLOErrorBudgetBurnFast
+        exp_alerts: []

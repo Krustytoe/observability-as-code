@@ -1,0 +1,82 @@
+# Linux host alerts for node_exporter targets scraped under job="node".
+# Severity convention: warning = awareness / business hours, critical = service impact, page now.
+groups:
+  - name: node.recording
+    rules:
+      - record: instance:node_cpu_utilisation:rate5m
+        expr: 1 - avg without (cpu, mode) (rate(node_cpu_seconds_total{job="node", mode="idle"}[5m]))
+
+      - record: instance:node_memory_utilisation:ratio
+        expr: 1 - (node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"})
+
+  - name: node.alerts
+    rules:
+      - alert: NodeExporterDown
+        expr: up{job="node"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "node_exporter on {{ $labels.instance }} is unreachable"
+          runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodeexporterdown"
+
+      - alert: NodeHighCPU
+        expr: instance:node_cpu_utilisation:rate5m > 0.90
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU on {{ $labels.instance }} above 90% for 15m"
+          runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodehighcpu"
+
+      - alert: NodeMemoryPressure
+        expr: instance:node_memory_utilisation:ratio > 0.90
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory on {{ $labels.instance }} above 90% for 15m"
+          runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodememorypressure"
+
+      - alert: NodeMemoryExhausted
+        expr: instance:node_memory_utilisation:ratio > 0.97
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory on {{ $labels.instance }} above 97%; OOM kills imminent"
+          runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodememorypressure"
+
+      # Predictive: fires hours before the disk is full, but only when it is already under 25% free
+      # (avoids noise from big-but-healthy volumes with bursty writes).
+      - alert: NodeFilesystemFillingUp
+        expr: |
+          (
+            node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|overlay|squashfs"}
+              / node_filesystem_size_bytes{job="node", fstype!~"tmpfs|overlay|squashfs"} < 0.25
+          and
+            predict_linear(node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|overlay|squashfs"}[6h], 24 * 3600) < 0
+          and
+            node_filesystem_readonly{job="node"} == 0
+          )
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} predicted to fill within 24h"
+          runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodefilesystemfillingup"
+
+      - alert: NodeFilesystemAlmostFull
+        expr: |
+          (
+            node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|overlay|squashfs"}
+              / node_filesystem_size_bytes{job="node", fstype!~"tmpfs|overlay|squashfs"} < 0.05
+          and
+            node_filesystem_readonly{job="node"} == 0
+          )
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} has under 5% free"
+          runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#nodefilesystemfillingup"
