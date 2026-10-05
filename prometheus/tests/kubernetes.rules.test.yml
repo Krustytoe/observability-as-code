@@ -50,6 +50,9 @@ tests:
             exp_annotations:
               summary: "payments/gateway has zero available replicas"
               runbook_url: "https://github.com/Krustytoe/observability-as-code/blob/main/runbooks/README.md#kubedeploymentreplicasmismatch"
+      - eval_time: 10m
+        alertname: KubeDeploymentReplicasMismatch
+        exp_alerts: []
       - eval_time: 20m
         alertname: KubeDeploymentReplicasMismatch
         exp_alerts:

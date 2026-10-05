@@ -1,7 +1,6 @@
 build/
 grafana/vendor/
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfvars

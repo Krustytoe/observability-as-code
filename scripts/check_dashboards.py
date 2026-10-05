@@ -6,6 +6,7 @@ Fails when a dashboard:
   - references a datasource by a hard-coded uid instead of the $datasource variable
   - is editable (the repo is the source of truth; UI edits get overwritten)
 """
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -23,7 +24,13 @@ def walk_datasources(node, path="$"):
             yield from walk_datasources(item, f"{path}[{i}]")
 
 
-def main(build_dir: str) -> int:
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("build_dir", nargs="?", default="build/dashboards",
+                        help="directory containing rendered dashboard JSON (default: build/dashboards)")
+    args = parser.parse_args(argv)
+    build_dir = args.build_dir
+
     files = sorted(Path(build_dir).glob("*.json"))
     if not files:
         print(f"no dashboards found in {build_dir}", file=sys.stderr)
@@ -31,7 +38,11 @@ def main(build_dir: str) -> int:
 
     errors, uids = [], {}
     for f in files:
-        dash = json.loads(f.read_text())
+        try:
+            dash = json.loads(f.read_text())
+        except json.JSONDecodeError as exc:
+            errors.append(f"{f.name}: invalid JSON: {exc}")
+            continue
         uid = dash.get("uid")
         if not uid:
             errors.append(f"{f.name}: missing uid")
@@ -52,4 +63,4 @@ def main(build_dir: str) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "build/dashboards"))
+    sys.exit(main())

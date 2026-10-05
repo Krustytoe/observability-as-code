@@ -61,6 +61,16 @@ An alert without a test is a guess. Each rule file has a promtool test that prov
 - **fires** on the condition it's meant to catch, with the exact labels and annotations,
 - **stays quiet** on the look-alike cases: healthy neighbours, tmpfs, read-only mounts, scaled-to-zero deployments, error spikes that have already recovered.
 
+## Dashboard policy checks
+
+`scripts/check_dashboards.py` runs after the build and fails CI when a rendered dashboard:
+
+- is missing a `uid`, or the uid exceeds Grafana's 40-char limit, or two dashboards share the same uid
+- references a datasource by a hard-coded uid instead of the `$datasource` variable
+- has `editable: true` (the repo is the source of truth; UI edits get overwritten on the next deploy)
+
+Run it locally: `python3 scripts/check_dashboards.py build/dashboards`
+
 ## Requirements
 
 `promtool` ≥ 2.x, `jsonnet` / `jsonnetfmt` (go-jsonnet), `jb`, Python 3, Terraform ≥ 1.7 for deploys. CI installs pinned versions; see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
