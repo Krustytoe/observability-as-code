@@ -15,6 +15,43 @@ runbooks/       one anchor per alert, linked from each rule's runbook_url
 scripts/        policy checks on rendered dashboards
 ```
 
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph git["Git: source of truth"]
+    rules["prometheus/rules"]
+    tests["prometheus/tests"]
+    dash["grafana/dashboards<br/>+ lib/common.libsonnet"]
+    rb["runbooks"]
+  end
+
+  subgraph ci["CI: make ci"]
+    fmt["jsonnetfmt --test"]
+    chk["promtool check rules"]
+    ut["promtool test rules<br/>firing + non-firing cases"]
+    build["jsonnet build<br/>build/dashboards/*.json"]
+    pol["check_dashboards.py<br/>uid, datasource, editable"]
+  end
+
+  tf["deploy/terraform<br/>grafana_folder + grafana_dashboard"]
+  graf["Grafana / Grafana Cloud"]
+  prom["Prometheus rule_files<br/>or mimirtool rules sync"]
+  route["Alert routing<br/>warning: ticket, critical: page"]
+
+  rules --> chk
+  rules --> ut
+  tests --> ut
+  dash --> fmt
+  dash --> build
+  build --> pol
+  pol --> tf
+  tf --> graf
+  ut --> prom
+  prom --> route
+  route -. "runbook_url" .-> rb
+```
+
 ## What's in it
 
 | Area | Highlights |
