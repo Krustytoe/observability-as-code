@@ -1,5 +1,7 @@
 # observability-as-code
 
+[![CI](https://github.com/Krustytoe/observability-as-code/actions/workflows/ci.yml/badge.svg)](https://github.com/Krustytoe/observability-as-code/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Krustytoe/observability-as-code)](https://github.com/Krustytoe/observability-as-code/releases/latest) [![License](https://img.shields.io/github/license/Krustytoe/observability-as-code)](LICENSE)
+
 Prometheus alerting rules, Grafana dashboards, and the deploy pipeline for both, all version-controlled, unit-tested, and generated from code instead of being clicked together in a UI.
 
 ```
