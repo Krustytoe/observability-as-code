@@ -114,6 +114,10 @@ Run it locally: `python3 scripts/check_dashboards.py build/dashboards`
 
 `promtool` ≥ 2.x, `jsonnet` / `jsonnetfmt` (go-jsonnet), `jb`, Python 3, Terraform ≥ 1.7 for deploys. CI installs pinned versions; see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
+## Used by
+
+- [aws-genai-platform](https://github.com/Krustytoe/aws-genai-platform) and [azure-genai-platform](https://github.com/Krustytoe/azure-genai-platform) emit OpenTelemetry GenAI metrics (`gen_ai.client.token.usage`, `rag.cost` per tenant, `rag.requests` by outcome), so their token, cost and refusal-rate dashboards and alerts can be built the same way as the ones here.
+
 ## License
 
 MIT
