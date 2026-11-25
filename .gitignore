@@ -4,3 +4,5 @@ grafana/vendor/
 *.tfstate
 *.tfstate.*
 *.tfvars
+# Ruler provenance markers (local only)
+*.ruler-generated

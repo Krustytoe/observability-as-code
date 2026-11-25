@@ -1,0 +1,75 @@
+
+
+<!-- Source: .ruler/AGENTS.md -->
+
+# observability-as-code
+
+Prometheus alerting/recording rules and Grafana dashboards, version-controlled, unit-tested, and generated from code, plus a Terraform config that publishes the rendered dashboards to Grafana / Grafana Cloud.
+
+## Layout
+
+- `prometheus/rules/*.yml`: node, kubernetes, and SLO burn-rate rules (recording groups `*.recording`, alert groups `*.alerts`).
+- `prometheus/tests/*.rules.test.yml`: promtool unit tests, one per rule file.
+- `grafana/dashboards/*.jsonnet`: dashboard sources; render to `build/dashboards/<name>.json`.
+- `grafana/lib/common.libsonnet`: shared Grafonnet helpers (`$datasource` variable, panel defaults, thresholds, `dashboard()` with `editable: false`).
+- `grafana/jsonnetfile.json` / `jsonnetfile.lock.json`: pinned grafonnet dependency, vendored into `grafana/vendor/` (gitignored).
+- `build/`: generated output (gitignored). Never edit by hand.
+- `deploy/terraform/main.tf`: publishes `build/dashboards/*.json` via `grafana_folder` + `grafana_dashboard`.
+- `runbooks/README.md`: one anchor per alert, targeted by each rule's `runbook_url`.
+- `scripts/check_dashboards.py`: stdlib-only policy checks on rendered dashboards.
+- `Makefile`: all local and CI checks.
+
+## Commands
+
+CI pins promtool (Prometheus `3.15.0`), go-jsonnet `0.22.0` (`jsonnet`, `jsonnetfmt`), and jb `0.6.0`; Python 3 is also required.
+
+```bash
+make vendor   # first time: cd grafana && jb install
+make ci       # what CI runs, in order:
+              #   fmt-check        jsonnetfmt --test grafana/dashboards/*.jsonnet grafana/lib/*.libsonnet
+              #   rules-check      promtool check rules prometheus/rules/*.yml
+              #   rules-test       promtool test rules prometheus/tests/*.yml
+              #   dashboards       jsonnet -J grafana/vendor -o build/dashboards/<name>.json <file>
+              #   dashboards-check python3 scripts/check_dashboards.py build/dashboards
+make fmt      # jsonnetfmt -i on all Jsonnet sources
+make clean    # rm -rf build grafana/vendor
+```
+
+If you touched `deploy/terraform` (CI job `deploy-config`):
+
+```bash
+cd deploy/terraform
+terraform fmt -check
+terraform init -backend=false -input=false
+terraform validate
+```
+
+## Conventions
+
+- Severity: `warning` = awareness, act within business hours (ticket/chat); `critical` = service interruption or imminent impact, act now (page on-call). No other severity values are used.
+- Every alert has `labels.severity`, `annotations.summary`, and `annotations.runbook_url` pointing at its anchor in `runbooks/README.md` (anchor = lowercased heading). Add or update the runbook entry with the alert.
+- Every alert has a promtool test with both a firing case (exact `exp_labels` and `exp_annotations`) and a non-firing case for look-alike conditions. A rule PR without tests is not mergeable.
+- Test files reference rules relatively (`rule_files: - ../rules/<file>.rules.yml`).
+- Recording rule names follow `level:metric:operation` (e.g. `instance:node_cpu_utilisation:rate5m`, `job:slo_http_errors_per_request:ratio_rate5m`).
+- Alert thresholds must match the dashboard panel threshold colours; the SLO objective in `slo-http.jsonnet` must match `slo-http.rules.yml`.
+- Dashboards are Jsonnet only, built through `grafana/lib/common.libsonnet`: query via `${datasource}` (no hard-coded datasource UIDs), stable `uid` <= 40 chars and unique (existing ones use the `oac-` prefix), `editable: false`.
+- Format Jsonnet with `jsonnetfmt` (`make fmt`).
+- PR titles are Conventional Commits (`feat:`, `fix:`, `docs:`, `ci:`, `chore:`, `!` for breaking); PRs are squash-merged and drive release-please.
+- Pin third-party GitHub Actions to a full commit SHA with a trailing version comment: `uses: org/action@<sha> # v1.2.3`.
+
+## Guardrails
+
+- Never run `terraform apply` in `deploy/terraform`, `mimirtool rules sync`, or anything that writes to a real Grafana, Prometheus/Mimir, cluster, or cloud account without explicit human approval. Prefer `terraform plan` / diff output first.
+- Never hand-edit generated output: `build/dashboards/*.json` and `grafana/vendor/`. Change the `.jsonnet`/`.libsonnet` source and rebuild with `make dashboards`.
+- Do not change pinned grafonnet versions except via `jb` and the lockfile.
+- No secrets in code, logs, or output. The Grafana service-account token is passed only as `TF_VAR_grafana_auth` (sensitive); never commit it, `*.tfvars`, or `*.tfstate`. No account/subscription/tenant IDs or internal hostnames in rules, tests, or examples.
+- Report security issues privately per `SECURITY.md`.
+- Generated agent files (`AGENTS.md`, `CLAUDE.md`, `.gemini/settings.json` at repo root) are produced by Ruler from `.ruler/`. Edit `.ruler/AGENTS.md`, then run `npx @intellectronica/ruler@0.3.46 apply`. Never hand-edit the generated files.
+
+## Definition of done
+
+- `make ci` passes (fmt-check, promtool check + test, dashboard build, policy checks).
+- `terraform fmt -check`, `terraform init -backend=false -input=false`, and `terraform validate` pass in `deploy/terraform` if touched.
+- Every new or changed alert has firing and non-firing promtool tests, a `summary`, a `runbook_url`, and a runbook entry.
+- Dashboard changes are in Jsonnet source only and pass `scripts/check_dashboards.py`.
+- No secrets or real identifiers in the diff; PR title is a Conventional Commit.
