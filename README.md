@@ -1,6 +1,6 @@
 # observability-as-code
 
-[![CI](https://github.com/Krustytoe/observability-as-code/actions/workflows/ci.yml/badge.svg)](https://github.com/Krustytoe/observability-as-code/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Krustytoe/observability-as-code)](https://github.com/Krustytoe/observability-as-code/releases/latest) [![License](https://img.shields.io/github/license/Krustytoe/observability-as-code)](LICENSE)
+[![CI](https://github.com/Krustytoe/observability-as-code/actions/workflows/ci.yml/badge.svg)](https://github.com/Krustytoe/observability-as-code/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Krustytoe/observability-as-code)](https://github.com/Krustytoe/observability-as-code/releases/latest) [![License](https://img.shields.io/github/license/Krustytoe/observability-as-code)](LICENSE) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Krustytoe/observability-as-code/badge)](https://scorecard.dev/viewer/?uri=github.com/Krustytoe/observability-as-code)
 
 > **When to use this repo:** Use this repo when you want to write, unit-test, and deploy system monitoring alerts (Prometheus), dashboards (Grafana), and troubleshooting runbooks from code rather than configuring them manually in a UI.
 
